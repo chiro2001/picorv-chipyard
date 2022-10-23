@@ -1,0 +1,3 @@
+[submodule "src/main/resources/vsrc/picorv32"]
+	path = src/main/resources/vsrc/picorv32
+	url = https://github.com/chiro2001/picorv32
