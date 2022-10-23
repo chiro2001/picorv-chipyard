@@ -5,149 +5,183 @@
 
 //------------------------------------------------------------------------------
 //------------------------------------------------------------------------------
-// CVA6 Tile Wrapper
+// PicoRV Tile Wrapper
 //------------------------------------------------------------------------------
 //------------------------------------------------------------------------------
 
-package cva6
-
-import sys.process._
+package picorv
 
 import chisel3._
+import chisel3.experimental.IntParam
 import chisel3.util._
-import chisel3.experimental.{IntParam, StringParam}
 
-import scala.collection.mutable.{ListBuffer}
+trait PicoRVCoreIOMem extends Bundle {
+  val mem_valid = Output(Bool())
+  val mem_instr = Output(Bool())
+  val mem_ready = Input(Bool())
+  val mem_addr = Output(UInt(32.W))
+  val mem_wdata = Output(UInt(32.W))
+  val mem_wstrb = Output(UInt(4.W))
+  val mem_rdata = Input(UInt(32.W))
+  // Look-Ahead Interface
+  val mem_la_read = Output(Bool())
+  val mem_la_write = Output(Bool())
+  val mem_la_addr = Output(UInt(32.W))
+  val mem_la_wdata = Output(UInt(32.W))
+  val mem_la_wstrb = Output(UInt(4.W))
+}
 
-import freechips.rocketchip.config._
-import freechips.rocketchip.subsystem._
-import freechips.rocketchip.devices.tilelink._
-import freechips.rocketchip.diplomacy._
+trait PicoRVCoreIOPCPI extends Bundle {
+  val pcpi_valid = Output(Bool())
+  val pcpi_insn = Output(UInt(32.W))
+  val pcpi_rs1 = Output(UInt(32.W))
+  val pcpi_rs2 = Output(UInt(32.W))
+  val pcpi_wr = Input(Bool())
+  val pcpi_rd = Input(UInt(32.W))
+  val pcpi_wait = Input(Bool())
+  val pcpi_ready = Input(Bool())
+}
 
-import freechips.rocketchip.rocket._
-import freechips.rocketchip.subsystem.{RocketCrossingParams}
-import freechips.rocketchip.tilelink._
-import freechips.rocketchip.interrupts._
-import freechips.rocketchip.util._
-import freechips.rocketchip.tile._
-import freechips.rocketchip.amba.axi4._
+trait PicoRVCoreIOIRQ extends Bundle {
+  val irq = Input(UInt(32.W))
+  val eoi = Output(UInt(32.W))
+}
 
-class CVA6CoreBlackbox(
-  traceportEnabled: Boolean,
-  traceportSz: Int,
-  xLen: Int,
-  rasEntries: Int,
-  btbEntries: Int,
-  bhtEntries: Int,
-  execRegAvail: Int = 5,
-  exeRegCnt: Int,
-  exeRegBase: Seq[BigInt],
-  exeRegSz: Seq[BigInt],
-  cacheRegAvail: Int = 5,
-  cacheRegCnt: Int,
-  cacheRegBase: Seq[BigInt],
-  cacheRegSz: Seq[BigInt],
-  debugBase: BigInt,
-  axiAddrWidth: Int,
-  axiDataWidth: Int,
-  axiUserWidth: Int,
-  axiIdWidth: Int,
-  pmpEntries: Int)
+trait PicoRVCoreIOTrace extends Bundle {
+  val trace_valid = Output(Bool())
+  val trace_data = Output(UInt(32.W))
+}
+
+trait PicoRVCoreIOFormal extends Bundle {
+  val rvfi_valid = Output(Bool())
+  val rvfi_order = Output(UInt(63.W))
+  val rvfi_insn = Output(UInt(31.W))
+  val rvfi_trap = Output(Bool())
+  val rvfi_halt = Output(Bool())
+  val rvfi_intr = Output(Bool())
+  val rvfi_mode = Output(UInt(1.W))
+  val rvfi_ixl = Output(UInt(1.W))
+  val rvfi_rs1_addr = Output(UInt(4.W))
+  val rvfi_rs2_addr = Output(UInt(4.W))
+  val rvfi_rs1_rdata = Output(UInt(31.W))
+  val rvfi_rs2_rdata = Output(UInt(31.W))
+  val rvfi_rd_addr = Output(UInt(4.W))
+  val rvfi_rd_wdata = Output(UInt(31.W))
+  val rvfi_pc_rdata = Output(UInt(31.W))
+  val rvfi_pc_wdata = Output(UInt(31.W))
+  val rvfi_mem_addr = Output(UInt(31.W))
+  val rvfi_mem_rmask = Output(UInt(3.W))
+  val rvfi_mem_wmask = Output(UInt(3.W))
+  val rvfi_mem_rdata = Output(UInt(31.W))
+  val rvfi_mem_wdata = Output(UInt(31.W))
+
+  val rvfi_csr_mcycle_rmask = Output(UInt(63.W))
+  val rvfi_csr_mcycle_wmask = Output(UInt(63.W))
+  val rvfi_csr_mcycle_rdata = Output(UInt(63.W))
+  val rvfi_csr_mcycle_wdata = Output(UInt(63.W))
+
+  val rvfi_csr_minstret_rmask = Output(UInt(63.W))
+  val rvfi_csr_minstret_wmask = Output(UInt(63.W))
+  val rvfi_csr_minstret_rdata = Output(UInt(63.W))
+  val rvfi_csr_minstret_wdata = Output(UInt(63.W))
+}
+
+trait PicoRVCoreIOBase extends Bundle {
+  val clk = Input(Clock())
+  val resetn = Input(Bool())
+}
+
+trait PicoRVCoreIOAXIPorts extends Bundle {
+  val mem_axi_awvalid = Output(Bool())
+  val mem_axi_awready = Input(Bool())
+  val mem_axi_awaddr = Output(UInt(31.W))
+  val mem_axi_awprot = Output(UInt(2.W))
+  val mem_axi_wvalid = Output(Bool())
+  val mem_axi_wready = Input(Bool())
+  val mem_axi_wdata = Output(UInt(31.W))
+  val mem_axi_wstrb = Output(UInt(3.W))
+  val mem_axi_bvalid = Input(Bool())
+  val mem_axi_bready = Output(Bool())
+  val mem_axi_arvalid = Output(Bool())
+  val mem_axi_arready = Input(Bool())
+  val mem_axi_araddr = Output(UInt(31.W))
+  val mem_axi_arprot = Output(UInt(2.W))
+  val mem_axi_rvalid = Input(Bool())
+  val mem_axi_rready = Output(Bool())
+  val mem_axi_rdata = Input(UInt(31.W))
+}
+
+class PicoRVCoreIO extends Bundle
+  with PicoRVCoreIOBase
+  with PicoRVCoreIOMem
+  with PicoRVCoreIOPCPI
+  with PicoRVCoreIOIRQ
+// with PicoRVCoreIOFormal
+
+class PicoRVCoreAXIIO extends Bundle
+  with PicoRVCoreIOBase
+  with PicoRVCoreIOAXIPorts
+  with PicoRVCoreIOPCPI
+  with PicoRVCoreIOIRQ
+
+class PicoRVCoreBlackbox
+(ENABLE_COUNTERS: Boolean = true,
+ ENABLE_COUNTERS64: Boolean = true,
+ ENABLE_REGS_16_31: Boolean = true,
+ ENABLE_REGS_DUALPORT: Boolean = true,
+ LATCHED_MEM_RDATA: Boolean = false,
+ TWO_STAGE_SHIFT: Boolean = true,
+ BARREL_SHIFTER: Boolean = false,
+ TWO_CYCLE_COMPARE: Boolean = false,
+ TWO_CYCLE_ALU: Boolean = false,
+ COMPRESSED_ISA: Boolean = false,
+ CATCH_MISALIGN: Boolean = true,
+ CATCH_ILLINSN: Boolean = true,
+ ENABLE_PCPI: Boolean = false,
+ ENABLE_MUL: Boolean = false,
+ ENABLE_FAST_MUL: Boolean = false,
+ ENABLE_DIV: Boolean = false,
+ ENABLE_IRQ: Boolean = false,
+ ENABLE_IRQ_QREGS: Boolean = true,
+ ENABLE_IRQ_TIMER: Boolean = true,
+ ENABLE_TRACE: Boolean = false,
+ REGS_INIT_ZERO: Boolean = false,
+ MASKED_IRQ: BigInt = 0x00000000L,
+ LATCHED_IRQ: BigInt = 0xffffffffL,
+ PROGADDR_RESET: BigInt = 0x00000000L,
+ PROGADDR_IRQ: BigInt = 0x00000010L,
+ STACKADDR: BigInt = 0xffffffffL,
+)
   extends BlackBox(
     Map(
-      "TRACEPORT_SZ" -> IntParam(traceportSz),
-      "XLEN" -> IntParam(xLen),
-      "RAS_ENTRIES" -> IntParam(rasEntries),
-      "BTB_ENTRIES" -> IntParam(btbEntries),
-      "BHT_ENTRIES" -> IntParam(bhtEntries),
-      "EXEC_REG_CNT" -> IntParam(exeRegCnt),
-      "CACHE_REG_CNT" -> IntParam(cacheRegCnt),
-      "DEBUG_BASE" -> IntParam(debugBase),
-      "AXI_ADDRESS_WIDTH" -> IntParam(axiAddrWidth),
-      "AXI_DATA_WIDTH" -> IntParam(axiDataWidth),
-      "AXI_USER_WIDTH" -> IntParam(axiUserWidth),
-      "AXI_ID_WIDTH" -> IntParam(axiIdWidth),
-      "PMP_ENTRIES" -> IntParam(pmpEntries)) ++
-    (0 until execRegAvail).map(i => s"EXEC_REG_BASE_$i" -> IntParam(exeRegBase(i))).toMap ++
-    (0 until execRegAvail).map(i => s"EXEC_REG_SZ_$i" -> IntParam(exeRegSz(i))).toMap ++
-    (0 until cacheRegAvail).map(i => s"CACHE_REG_BASE_$i" -> IntParam(cacheRegBase(i))).toMap ++
-    (0 until cacheRegAvail).map(i => s"CACHE_REG_SZ_$i" -> IntParam(cacheRegSz(i))).toMap
-  )
-  with HasBlackBoxPath
-{
-  val io = IO(new Bundle {
-    val clk_i = Input(Clock())
-    val rst_ni = Input(Bool())
-    val boot_addr_i = Input(UInt(64.W))
-    val hart_id_i = Input(UInt(64.W))
-    val irq_i = Input(UInt(2.W))
-    val ipi_i = Input(Bool())
-    val time_irq_i = Input(Bool())
-    val debug_req_i = Input(Bool())
-    val trace_o = Output(UInt(traceportSz.W))
-
-    val axi_resp_i_aw_ready      = Input(Bool())
-    val axi_req_o_aw_valid       = Output(Bool())
-    val axi_req_o_aw_bits_id     = Output(UInt(axiIdWidth.W))
-    val axi_req_o_aw_bits_addr   = Output(UInt(axiAddrWidth.W))
-    val axi_req_o_aw_bits_len    = Output(UInt(8.W))
-    val axi_req_o_aw_bits_size   = Output(UInt(3.W))
-    val axi_req_o_aw_bits_burst  = Output(UInt(2.W))
-    val axi_req_o_aw_bits_lock   = Output(Bool())
-    val axi_req_o_aw_bits_cache  = Output(UInt(4.W))
-    val axi_req_o_aw_bits_prot   = Output(UInt(3.W))
-    val axi_req_o_aw_bits_qos    = Output(UInt(4.W))
-    val axi_req_o_aw_bits_region = Output(UInt(4.W))
-    val axi_req_o_aw_bits_atop   = Output(UInt(6.W))
-    val axi_req_o_aw_bits_user   = Output(UInt(axiUserWidth.W))
-
-    val axi_resp_i_w_ready    = Input(Bool())
-    val axi_req_o_w_valid     = Output(Bool())
-    val axi_req_o_w_bits_data = Output(UInt(axiDataWidth.W))
-    val axi_req_o_w_bits_strb = Output(UInt((axiDataWidth/8).W))
-    val axi_req_o_w_bits_last = Output(Bool())
-    val axi_req_o_w_bits_user = Output(UInt(axiUserWidth.W))
-
-    val axi_resp_i_ar_ready      = Input(Bool())
-    val axi_req_o_ar_valid       = Output(Bool())
-    val axi_req_o_ar_bits_id     = Output(UInt(axiIdWidth.W))
-    val axi_req_o_ar_bits_addr   = Output(UInt(axiAddrWidth.W))
-    val axi_req_o_ar_bits_len    = Output(UInt(8.W))
-    val axi_req_o_ar_bits_size   = Output(UInt(3.W))
-    val axi_req_o_ar_bits_burst  = Output(UInt(2.W))
-    val axi_req_o_ar_bits_lock   = Output(Bool())
-    val axi_req_o_ar_bits_cache  = Output(UInt(4.W))
-    val axi_req_o_ar_bits_prot   = Output(UInt(3.W))
-    val axi_req_o_ar_bits_qos    = Output(UInt(4.W))
-    val axi_req_o_ar_bits_region = Output(UInt(4.W))
-    val axi_req_o_ar_bits_user   = Output(UInt(axiUserWidth.W))
-
-    val axi_req_o_b_ready      = Output(Bool())
-    val axi_resp_i_b_valid     = Input(Bool())
-    val axi_resp_i_b_bits_id   = Input(UInt(axiIdWidth.W))
-    val axi_resp_i_b_bits_resp = Input(UInt(2.W))
-    val axi_resp_i_b_bits_user = Input(UInt(axiUserWidth.W))
-
-    val axi_req_o_r_ready      = Output(Bool())
-    val axi_resp_i_r_valid     = Input(Bool())
-    val axi_resp_i_r_bits_id   = Input(UInt(axiIdWidth.W))
-    val axi_resp_i_r_bits_data = Input(UInt(axiDataWidth.W))
-    val axi_resp_i_r_bits_resp = Input(UInt(2.W))
-    val axi_resp_i_r_bits_last = Input(Bool())
-    val axi_resp_i_r_bits_user = Input(UInt(axiUserWidth.W))
-  })
-
-  require((exeRegCnt <= execRegAvail) && (exeRegBase.length <= execRegAvail) && (exeRegSz.length <= execRegAvail), s"Currently only supports $execRegAvail execution regions")
-  require((cacheRegCnt <= cacheRegAvail) && (cacheRegBase.length <= cacheRegAvail) && (cacheRegSz.length <= cacheRegAvail), s"Currently only supports $cacheRegAvail cacheable regions")
-
-  val chipyardDir = System.getProperty("user.dir")
-  val cva6VsrcDir = s"$chipyardDir/generators/cva6/src/main/resources/vsrc"
-
-  // pre-process the verilog to remove "includes" and combine into one file
-  val make = s"make -C $cva6VsrcDir default "
-  val proc = if (traceportEnabled) make + "EXTRA_PREPROC_DEFINES=FIRESIM_TRACE" else make
-  require (proc.! == 0, "Failed to run preprocessing step")
-
-  // add wrapper/blackbox after it is pre-processed
-  addPath(s"$cva6VsrcDir/CVA6CoreBlackbox.preprocessed.sv")
+      "ENABLE_COUNTERS" -> IntParam(if (ENABLE_COUNTERS) 1 else 0),
+      "ENABLE_COUNTERS64" -> IntParam(if (ENABLE_COUNTERS64) 1 else 0),
+      "ENABLE_REGS_16_31" -> IntParam(if (ENABLE_REGS_16_31) 1 else 0),
+      "ENABLE_REGS_DUALPORT" -> IntParam(if (ENABLE_REGS_DUALPORT) 1 else 0),
+      "LATCHED_MEM_RDATA" -> IntParam(if (LATCHED_MEM_RDATA) 1 else 0),
+      "TWO_STAGE_SHIFT" -> IntParam(if (TWO_STAGE_SHIFT) 1 else 0),
+      "BARREL_SHIFTER" -> IntParam(if (BARREL_SHIFTER) 1 else 0),
+      "TWO_CYCLE_COMPARE" -> IntParam(if (TWO_CYCLE_COMPARE) 1 else 0),
+      "TWO_CYCLE_ALU" -> IntParam(if (TWO_CYCLE_ALU) 1 else 0),
+      "COMPRESSED_ISA" -> IntParam(if (COMPRESSED_ISA) 1 else 0),
+      "CATCH_MISALIGN" -> IntParam(if (CATCH_MISALIGN) 1 else 0),
+      "CATCH_ILLINSN" -> IntParam(if (CATCH_ILLINSN) 1 else 0),
+      "ENABLE_PCPI" -> IntParam(if (ENABLE_PCPI) 1 else 0),
+      "ENABLE_MUL" -> IntParam(if (ENABLE_MUL) 1 else 0),
+      "ENABLE_FAST_MUL" -> IntParam(if (ENABLE_FAST_MUL) 1 else 0),
+      "ENABLE_DIV" -> IntParam(if (ENABLE_DIV) 1 else 0),
+      "ENABLE_IRQ" -> IntParam(if (ENABLE_IRQ) 1 else 0),
+      "ENABLE_IRQ_QREGS" -> IntParam(if (ENABLE_IRQ_QREGS) 1 else 0),
+      "ENABLE_IRQ_TIMER" -> IntParam(if (ENABLE_IRQ_TIMER) 1 else 0),
+      "ENABLE_TRACE" -> IntParam(if (ENABLE_TRACE) 1 else 0),
+      "REGS_INIT_ZERO" -> IntParam(if (REGS_INIT_ZERO) 1 else 0),
+      "MASKED_IRQ" -> IntParam(MASKED_IRQ),
+      "MASKED_IRQ" -> IntParam(MASKED_IRQ),
+      "LATCHED_IRQ" -> IntParam(LATCHED_IRQ),
+      "PROGADDR_RESET" -> IntParam(PROGADDR_RESET),
+      "PROGADDR_IRQ" -> IntParam(PROGADDR_IRQ),
+      "STACKADDR" -> IntParam(STACKADDR)))
+    with HasBlackBoxPath {
+  // val io = IO(new PicoRVCoreIO)
+  val io = IO(new PicoRVCoreAXIIO)
 }
