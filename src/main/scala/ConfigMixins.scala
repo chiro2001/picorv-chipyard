@@ -20,13 +20,13 @@ import freechips.rocketchip.tile._
  * Speeds up operation... at the expense of not being able to use
  * to/fromhost communication unless those lines are evicted from L1.
  */
-class WithToFromHostCaching extends Config((site, here, up) => {
-  case TilesLocated(InSubsystem) => up(TilesLocated(InSubsystem), site) map {
-    case tp: PicoRVTileAttachParams => tp.copy(tileParams = tp.tileParams.copy(core = tp.tileParams.core.copy(
-      enableToFromHostCaching = true
-    )))
-  }
-})
+// class WithToFromHostCaching extends Config((site, here, up) => {
+//   case TilesLocated(InSubsystem) => up(TilesLocated(InSubsystem), site) map {
+//     case tp: PicoRVTileAttachParams => tp.copy(tileParams = tp.tileParams.copy(core = tp.tileParams.core.copy(
+//       enableToFromHostCaching = true
+//     )))
+//   }
+// })
 
 /**
  * Create multiple copies of a PicoRV tile (and thus a core).

@@ -12,24 +12,17 @@
 package picorv
 
 import chisel3._
-import chisel3.util._
-import chisel3.experimental.{IntParam, StringParam}
-
-import scala.collection.mutable.{ListBuffer}
-
+import freechips.rocketchip.amba.axi4._
 import freechips.rocketchip.config._
-import freechips.rocketchip.subsystem._
 import freechips.rocketchip.devices.tilelink._
 import freechips.rocketchip.diplomacy._
-
-import freechips.rocketchip.rocket._
-import freechips.rocketchip.subsystem.{RocketCrossingParams}
-import freechips.rocketchip.tilelink._
 import freechips.rocketchip.interrupts._
-import freechips.rocketchip.util._
-import freechips.rocketchip.tile._
-import freechips.rocketchip.amba.axi4._
 import freechips.rocketchip.prci.ClockSinkParameters
+import freechips.rocketchip.rocket._
+import freechips.rocketchip.subsystem._
+import freechips.rocketchip.tile._
+import freechips.rocketchip.tilelink._
+import freechips.rocketchip.util._
 
 /**
  * parameter [ 0:0] ENABLE_COUNTERS = 1,
@@ -65,7 +58,7 @@ case class PicoRVCoreParams
  ENABLE_COUNTERS64: Boolean = true,
  ENABLE_REGS_16_31: Boolean = true,
  ENABLE_REGS_DUALPORT: Boolean = true,
- LATCHED_MEM_RDATA: Boolean = false,
+ // LATCHED_MEM_RDATA: Boolean = false,
  TWO_STAGE_SHIFT: Boolean = true,
  BARREL_SHIFTER: Boolean = false,
  TWO_CYCLE_COMPARE: Boolean = false,
@@ -236,12 +229,13 @@ class PicoRVTile private
     := AXI4Fragmenter() // deal with multi-beat xacts
     := memAXI4Node)
 
-  def connectPicoRVInterrupts(debug: Bool, msip: Bool, mtip: Bool, m_s_eip: UInt) {
+  def connectPicoRVInterrupts(irq: UInt) {
     val (interrupts, _) = intSinkNode.in(0)
-    debug := interrupts(0)
-    msip := interrupts(1)
-    mtip := interrupts(2)
-    m_s_eip := Cat(interrupts(4), interrupts(3))
+    // debug := interrupts(0)
+    // msip := interrupts(1)
+    // mtip := interrupts(2)
+    // m_s_eip := Cat(interrupts(4), interrupts(3))
+    irq := interrupts.asUInt
   }
 }
 
@@ -263,7 +257,7 @@ class PicoRVTileModuleImp(outer: PicoRVTile) extends BaseTileModuleImp(outer) {
   // have the main memory be cached, but don't cache tohost/fromhost addresses
   // TODO: current cache subsystem can only support 1 cacheable region... so cache AFTER the tohost/fromhost addresses
   val wordOffset = 0x40
-  val (cacheableRegionBases, cacheableRegionSzs) = if (outer.picorvParams.core.enableToFromHostCaching) {
+  val (cacheableRegionBases, cacheableRegionSzs) = if (true /* outer.picorvParams.core.enableToFromHostCaching */ ) {
     val bases = Seq(p(ExtMem).get.master.base, BigInt(0x0), BigInt(0x0), BigInt(0x0), BigInt(0x0))
     val sizes = Seq(p(ExtMem).get.master.size, BigInt(0x0), BigInt(0x0), BigInt(0x0), BigInt(0x0))
     (bases, sizes)
@@ -280,12 +274,12 @@ class PicoRVTileModuleImp(outer: PicoRVTile) extends BaseTileModuleImp(outer) {
   val traceInstSz = (new freechips.rocketchip.rocket.TracedInstruction).getWidth + 2
 
   // connect the picorv core
-  val core = Module(new PicoRVCoreBlackbox(
+  val core = Module(new picorv32_axi(
     ENABLE_COUNTERS = outer.picorvParams.core.ENABLE_COUNTERS,
     ENABLE_COUNTERS64 = outer.picorvParams.core.ENABLE_COUNTERS64,
     ENABLE_REGS_16_31 = outer.picorvParams.core.ENABLE_REGS_16_31,
     ENABLE_REGS_DUALPORT = outer.picorvParams.core.ENABLE_REGS_DUALPORT,
-    LATCHED_MEM_RDATA = outer.picorvParams.core.LATCHED_MEM_RDATA,
+    // LATCHED_MEM_RDATA = outer.picorvParams.core.LATCHED_MEM_RDATA,
     TWO_STAGE_SHIFT = outer.picorvParams.core.TWO_STAGE_SHIFT,
     BARREL_SHIFTER = outer.picorvParams.core.BARREL_SHIFTER,
     TWO_CYCLE_COMPARE = outer.picorvParams.core.TWO_CYCLE_COMPARE,
@@ -307,29 +301,31 @@ class PicoRVTileModuleImp(outer: PicoRVTile) extends BaseTileModuleImp(outer) {
     PROGADDR_RESET = outer.picorvParams.core.PROGADDR_RESET,
     PROGADDR_IRQ = outer.picorvParams.core.PROGADDR_IRQ,
     STACKADDR = outer.picorvParams.core.STACKADDR,
-  )).suggestName("picorv32_axi")
+  )).suggestName("picorv32_core_inst")
 
   core.io.clk := clock
   core.io.resetn := ~reset.asBool
   // core.io.boot_addr_i := outer.resetVectorSinkNode.bundle
   // core.io.hart_id_i := outer.hartIdSinkNode.bundle
 
-  outer.connectPicoRVInterrupts(core.io.debug_req_i, core.io.ipi_i, core.io.time_irq_i, core.io.irq_i)
+  // TODO: connect interrupt
+  outer.connectPicoRVInterrupts(core.io.irq)
 
   if (outer.picorvParams.trace) {
     // unpack the trace io from a UInt into Vec(TracedInstructions)
     //outer.traceSourceNode.bundle <> core.io.trace_o.asTypeOf(outer.traceSourceNode.bundle)
 
-    for (w <- 0 until outer.picorvParams.core.retireWidth) {
-      outer.traceSourceNode.bundle(w).valid := core.io.trace_o(traceInstSz * w + 2)
-      outer.traceSourceNode.bundle(w).iaddr := core.io.trace_o(traceInstSz * w + 42, traceInstSz * w + 3)
-      outer.traceSourceNode.bundle(w).insn := core.io.trace_o(traceInstSz * w + 74, traceInstSz * w + 43)
-      outer.traceSourceNode.bundle(w).priv := core.io.trace_o(traceInstSz * w + 77, traceInstSz * w + 75)
-      outer.traceSourceNode.bundle(w).exception := core.io.trace_o(traceInstSz * w + 78)
-      outer.traceSourceNode.bundle(w).interrupt := core.io.trace_o(traceInstSz * w + 79)
-      outer.traceSourceNode.bundle(w).cause := core.io.trace_o(traceInstSz * w + 87, traceInstSz * w + 80)
-      outer.traceSourceNode.bundle(w).tval := core.io.trace_o(traceInstSz * w + 127, traceInstSz * w + 88)
-    }
+    // for (w <- 0 until outer.picorvParams.core.retireWidth) {
+    //   outer.traceSourceNode.bundle(w).valid := core.io.trace_o(traceInstSz * w + 2)
+    //   outer.traceSourceNode.bundle(w).iaddr := core.io.trace_o(traceInstSz * w + 42, traceInstSz * w + 3)
+    //   outer.traceSourceNode.bundle(w).insn := core.io.trace_o(traceInstSz * w + 74, traceInstSz * w + 43)
+    //   outer.traceSourceNode.bundle(w).priv := core.io.trace_o(traceInstSz * w + 77, traceInstSz * w + 75)
+    //   outer.traceSourceNode.bundle(w).exception := core.io.trace_o(traceInstSz * w + 78)
+    //   outer.traceSourceNode.bundle(w).interrupt := core.io.trace_o(traceInstSz * w + 79)
+    //   outer.traceSourceNode.bundle(w).cause := core.io.trace_o(traceInstSz * w + 87, traceInstSz * w + 80)
+    //   outer.traceSourceNode.bundle(w).tval := core.io.trace_o(traceInstSz * w + 127, traceInstSz * w + 88)
+    // }
+    // TODO: add tracer
   } else {
     outer.traceSourceNode.bundle := DontCare
     outer.traceSourceNode.bundle map (t => t.valid := false.B)
@@ -337,57 +333,54 @@ class PicoRVTileModuleImp(outer: PicoRVTile) extends BaseTileModuleImp(outer) {
 
   // connect the axi interface
   outer.memAXI4Node.out foreach { case (out, edgeOut) =>
-    core.io.axi_resp_i_aw_ready := out.aw.ready
-    out.aw.valid := core.io.axi_req_o_aw_valid
-    out.aw.bits.id := core.io.axi_req_o_aw_bits_id
-    out.aw.bits.addr := core.io.axi_req_o_aw_bits_addr
-    out.aw.bits.len := core.io.axi_req_o_aw_bits_len
-    out.aw.bits.size := core.io.axi_req_o_aw_bits_size
-    out.aw.bits.burst := core.io.axi_req_o_aw_bits_burst
-    out.aw.bits.lock := core.io.axi_req_o_aw_bits_lock
-    out.aw.bits.cache := core.io.axi_req_o_aw_bits_cache
-    out.aw.bits.prot := core.io.axi_req_o_aw_bits_prot
-    out.aw.bits.qos := core.io.axi_req_o_aw_bits_qos
-    // unused signals
-    assert(core.io.axi_req_o_aw_bits_region === 0.U)
-    assert(core.io.axi_req_o_aw_bits_atop === 0.U)
-    assert(core.io.axi_req_o_aw_bits_user === 0.U)
+    // connect AXI <==> AXI Lite
+    core.io.mem_axi_awready := out.aw.ready
+    out.aw.valid := core.io.mem_axi_awvalid
+    // set id to 0
+    out.aw.bits.id := 0.U
+    out.aw.bits.addr := core.io.mem_axi_awaddr
+    // aw len is 0, burst for 1
+    out.aw.bits.len := 0.U
+    // aw size is "b010", every transfer is 4 bytes
+    out.aw.bits.size := "b010".U
+    // only support burst=INCR
+    out.aw.bits.burst := "b01".U
+    // lock: Normal access
+    out.aw.bits.lock := "b00".U
+    // cache: No buffered
+    out.aw.bits.cache := "b0000".U
+    out.aw.bits.prot := core.io.mem_axi_awprot
+    out.aw.bits.qos := "b0000".U
 
-    core.io.axi_resp_i_w_ready := out.w.ready
-    out.w.valid := core.io.axi_req_o_w_valid
-    out.w.bits.data := core.io.axi_req_o_w_bits_data
-    out.w.bits.strb := core.io.axi_req_o_w_bits_strb
-    out.w.bits.last := core.io.axi_req_o_w_bits_last
-    // unused signals
-    assert(core.io.axi_req_o_w_bits_user === 0.U)
+    core.io.mem_axi_wready := out.w.ready
+    out.w.valid := core.io.mem_axi_wvalid
+    out.w.bits.data := core.io.mem_axi_wdata
+    out.w.bits.strb := core.io.mem_axi_wstrb
+    // last is 1, use lite
+    out.w.bits.last := true.B
 
-    out.b.ready := core.io.axi_req_o_b_ready
-    core.io.axi_resp_i_b_valid := out.b.valid
-    core.io.axi_resp_i_b_bits_id := out.b.bits.id
-    core.io.axi_resp_i_b_bits_resp := out.b.bits.resp
-    core.io.axi_resp_i_b_bits_user := 0.U // unused
+    out.b.ready := core.io.mem_axi_bready
+    core.io.mem_axi_bvalid := out.b.valid
+    // core.io.axi_resp_i_b_bits_id := out.b.bits.id
+    // core.io.axi_resp_i_b_bits_resp := out.b.bits.resp
 
-    core.io.axi_resp_i_ar_ready := out.ar.ready
-    out.ar.valid := core.io.axi_req_o_ar_valid
-    out.ar.bits.id := core.io.axi_req_o_ar_bits_id
-    out.ar.bits.addr := core.io.axi_req_o_ar_bits_addr
-    out.ar.bits.len := core.io.axi_req_o_ar_bits_len
-    out.ar.bits.size := core.io.axi_req_o_ar_bits_size
-    out.ar.bits.burst := core.io.axi_req_o_ar_bits_burst
-    out.ar.bits.lock := core.io.axi_req_o_ar_bits_lock
-    out.ar.bits.cache := core.io.axi_req_o_ar_bits_cache
-    out.ar.bits.prot := core.io.axi_req_o_ar_bits_prot
-    out.ar.bits.qos := core.io.axi_req_o_ar_bits_qos
-    // unused signals
-    assert(core.io.axi_req_o_ar_bits_region === 0.U)
-    assert(core.io.axi_req_o_ar_bits_user === 0.U)
+    core.io.mem_axi_arready := out.ar.ready
+    out.ar.valid := core.io.mem_axi_arvalid
+    out.ar.bits.id := 0.U
+    out.ar.bits.addr := core.io.mem_axi_awaddr
+    out.ar.bits.len := 0.U
+    out.ar.bits.size := "b010".U
+    out.ar.bits.burst := "b01".U
+    out.ar.bits.lock := "b00".U
+    out.ar.bits.cache := "b0000".U
+    out.ar.bits.prot := core.io.mem_axi_arprot
+    out.ar.bits.qos := "b0000".U
 
-    out.r.ready := core.io.axi_req_o_r_ready
-    core.io.axi_resp_i_r_valid := out.r.valid
-    core.io.axi_resp_i_r_bits_id := out.r.bits.id
-    core.io.axi_resp_i_r_bits_data := out.r.bits.data
-    core.io.axi_resp_i_r_bits_resp := out.r.bits.resp
-    core.io.axi_resp_i_r_bits_last := out.r.bits.last
-    core.io.axi_resp_i_r_bits_user := 0.U // unused
+    out.r.ready := core.io.mem_axi_rready
+    core.io.mem_axi_rvalid := out.r.valid
+    // core.io.axi_resp_i_r_bits_id := out.r.bits.id
+    core.io.mem_axi_rdata := out.r.bits.data
+    // core.io.axi_resp_i_r_bits_resp := out.r.bits.resp
+    // core.io.axi_resp_i_r_bits_last := out.r.bits.last
   }
 }
