@@ -80,7 +80,7 @@ case class PicoRVCoreParams
  PROGADDR_RESET: BigInt = 0x10000L, // use bootrom
  // PROGADDR_RESET: BigInt = 0x80000000L, // use ram directly
  // PROGADDR_RESET: BigInt = 0x00000000L,
- PROGADDR_IRQ: BigInt = 0x00000010L,
+ PROGADDR_IRQ: BigInt = 0x10000L + (4 * 4), // to irq handler
  STACKADDR: BigInt = 0xffffffffL,
 ) extends CoreParams {
   /* DO NOT CHANGE BELOW THIS */
@@ -240,7 +240,8 @@ class PicoRVTile private
     // m_s_eip := Cat(interrupts(4), interrupts(3))
     // ignore irq #2
     // irq := interrupts.asUInt & (~(1.U(32.W) << 2)).asUInt
-    irq := interrupts.slice(0, 2).asUInt
+    // irq := interrupts.slice(0, 2).asUInt
+    irq := interrupts(1)
   }
 }
 
