@@ -249,7 +249,11 @@ class picorv32_axi
   val src = s"$picorvVsrcDir/picorv32/picorv32.v"
   val dest = src + ".preprocessed.v"
   MyUtils.addBlackBoxDefines(src, dest, Seq(
-    "RISCV_FORMAL" -> ""
+    "RISCV_FORMAL" -> "",
+    "DEBUG" -> "",
+    "DEBUGASM" -> "",
+    "DEBUGREGS" -> "",
+    "DEBUGNETS" -> ""
   ).toMap)
   addPath(dest)
 }
