@@ -232,12 +232,15 @@ class PicoRVTile private
     := memAXI4Node)
 
   def connectPicoRVInterrupts(irq: UInt) {
+    // start irq: #1
     val (interrupts, _) = intSinkNode.in(0)
     // debug := interrupts(0)
     // msip := interrupts(1)
     // mtip := interrupts(2)
     // m_s_eip := Cat(interrupts(4), interrupts(3))
-    irq := interrupts.asUInt
+    // ignore irq #2
+    // irq := interrupts.asUInt & (~(1.U(32.W) << 2)).asUInt
+    irq := interrupts.slice(0, 2).asUInt
   }
 }
 

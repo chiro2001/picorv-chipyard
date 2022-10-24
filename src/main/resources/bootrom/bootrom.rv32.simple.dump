@@ -1,0 +1,17 @@
+
+bootrom.rv32.simple.elf:     file format elf32-littleriscv
+
+
+Disassembly of section .text.start:
+
+00010000 <_start>:
+   10000:	020005b7          	lui	a1,0x2000
+   10004:	00458613          	addi	a2,a1,4 # 2000004 <_dtb+0x1feffdc>
+   10008:	00100693          	li	a3,1
+   1000c:	0005a023          	sw	zero,0(a1)
+   10010:	00004537          	lui	a0,0x4
+   10014:	00052503          	lw	a0,0(a0) # 4000 <_start-0xc000>
+   10018:	00000597          	auipc	a1,0x0
+   1001c:	01058593          	addi	a1,a1,16 # 10028 <_dtb>
+   10020:	00050067          	jr	a0
+   10024:	00000013          	nop

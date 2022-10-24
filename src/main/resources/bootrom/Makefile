@@ -1,11 +1,11 @@
-bootrom_img = bootrom.rv64.img bootrom.rv32.img bootrom.rv32.simple.img start.rv32.img
-bootrom_dump = bootrom.rv64.dump bootrom.rv32.dump
+bootrom_img = bootrom.rv32.img bootrom.rv32.simple.img start.rv32.img
+bootrom_dump = bootrom.rv32.dump bootrom.rv32.simple.dump start.rv32.dump
 
-GCC=riscv64-unknown-elf-gcc
-CFLAGS_RV64=-mabi=lp64 -march=rv64ima
-CFLAGS_RV32=-mabi=ilp32 -march=rv32ima
-OBJCOPY=riscv64-unknown-elf-objcopy
-OBJDUMP=riscv64-unknown-elf-objdump
+CROSS_COMPILE := riscv-none-embed-
+GCC=$(CROSS_COMPILE)gcc
+CFLAGS_RV32=-mabi=ilp32 -march=rv32im
+OBJCOPY=$(CROSS_COMPILE)objcopy
+OBJDUMP=$(CROSS_COMPILE)objdump
 
 START_FILES := irq.c print.c
 
@@ -26,9 +26,6 @@ start.rv32.elf: start.S linker.ld
 
 %.rv32.simple.elf: %_simple.S linker.ld
 	$(GCC) $(CFLAGS_RV32) -Tlinker.ld bootrom_simple.S -nostdlib -static -o $@
-
-%.rv64.elf: %.S linker.ld
-	$(GCC) $(CFLAGS_RV64) -Tlinker.ld $< -nostdlib -static -o $@
 
 %.dump: %.elf
 	$(OBJDUMP) -d $< > $@
