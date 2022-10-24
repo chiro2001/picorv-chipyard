@@ -77,7 +77,8 @@ case class PicoRVCoreParams
  REGS_INIT_ZERO: Boolean = false,
  MASKED_IRQ: BigInt = 0x00000000L,
  LATCHED_IRQ: BigInt = 0xffffffffL,
- PROGADDR_RESET: BigInt = 0x10000L,
+ // PROGADDR_RESET: BigInt = 0x10000L, // use bootrom
+ PROGADDR_RESET: BigInt = 0x80000000L, // use ram directly
  // PROGADDR_RESET: BigInt = 0x00000000L,
  PROGADDR_IRQ: BigInt = 0x00000010L,
  STACKADDR: BigInt = 0xffffffffL,
