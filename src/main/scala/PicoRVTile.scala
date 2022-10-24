@@ -73,11 +73,12 @@ case class PicoRVCoreParams
  ENABLE_IRQ: Boolean = false,
  ENABLE_IRQ_QREGS: Boolean = true,
  ENABLE_IRQ_TIMER: Boolean = true,
- ENABLE_TRACE: Boolean = false,
+ ENABLE_TRACE: Boolean = true,
  REGS_INIT_ZERO: Boolean = false,
  MASKED_IRQ: BigInt = 0x00000000L,
  LATCHED_IRQ: BigInt = 0xffffffffL,
- PROGADDR_RESET: BigInt = 0x00000000L,
+ PROGADDR_RESET: BigInt = 0x10000L,
+ // PROGADDR_RESET: BigInt = 0x00000000L,
  PROGADDR_IRQ: BigInt = 0x00000010L,
  STACKADDR: BigInt = 0xffffffffL,
 ) extends CoreParams {
@@ -315,16 +316,24 @@ class PicoRVTileModuleImp(outer: PicoRVTile) extends BaseTileModuleImp(outer) {
     // unpack the trace io from a UInt into Vec(TracedInstructions)
     //outer.traceSourceNode.bundle <> core.io.trace_o.asTypeOf(outer.traceSourceNode.bundle)
 
-    // for (w <- 0 until outer.picorvParams.core.retireWidth) {
-    //   outer.traceSourceNode.bundle(w).valid := core.io.trace_o(traceInstSz * w + 2)
-    //   outer.traceSourceNode.bundle(w).iaddr := core.io.trace_o(traceInstSz * w + 42, traceInstSz * w + 3)
-    //   outer.traceSourceNode.bundle(w).insn := core.io.trace_o(traceInstSz * w + 74, traceInstSz * w + 43)
-    //   outer.traceSourceNode.bundle(w).priv := core.io.trace_o(traceInstSz * w + 77, traceInstSz * w + 75)
-    //   outer.traceSourceNode.bundle(w).exception := core.io.trace_o(traceInstSz * w + 78)
-    //   outer.traceSourceNode.bundle(w).interrupt := core.io.trace_o(traceInstSz * w + 79)
-    //   outer.traceSourceNode.bundle(w).cause := core.io.trace_o(traceInstSz * w + 87, traceInstSz * w + 80)
-    //   outer.traceSourceNode.bundle(w).tval := core.io.trace_o(traceInstSz * w + 127, traceInstSz * w + 88)
-    // }
+    for (w <- 0 until outer.picorvParams.core.retireWidth) {
+      // outer.traceSourceNode.bundle(w).valid := core.io.trace_o(traceInstSz * w + 2)
+      // outer.traceSourceNode.bundle(w).iaddr := core.io.trace_o(traceInstSz * w + 42, traceInstSz * w + 3)
+      // outer.traceSourceNode.bundle(w).insn := core.io.trace_o(traceInstSz * w + 74, traceInstSz * w + 43)
+      // outer.traceSourceNode.bundle(w).priv := core.io.trace_o(traceInstSz * w + 77, traceInstSz * w + 75)
+      // outer.traceSourceNode.bundle(w).exception := core.io.trace_o(traceInstSz * w + 78)
+      // outer.traceSourceNode.bundle(w).interrupt := core.io.trace_o(traceInstSz * w + 79)
+      // outer.traceSourceNode.bundle(w).cause := core.io.trace_o(traceInstSz * w + 87, traceInstSz * w + 80)
+      // outer.traceSourceNode.bundle(w).tval := core.io.trace_o(traceInstSz * w + 127, traceInstSz * w + 88)
+      outer.traceSourceNode.bundle(w).valid := core.io.rvfi_valid
+      outer.traceSourceNode.bundle(w).iaddr := core.io.rvfi_pc_rdata
+      outer.traceSourceNode.bundle(w).insn := core.io.rvfi_insn
+      outer.traceSourceNode.bundle(w).priv := 3.U
+      outer.traceSourceNode.bundle(w).exception := 0.U
+      outer.traceSourceNode.bundle(w).interrupt := core.io.rvfi_intr
+      outer.traceSourceNode.bundle(w).cause := 0.U
+      outer.traceSourceNode.bundle(w).tval := 0.U
+    }
     // TODO: add tracer
   } else {
     outer.traceSourceNode.bundle := DontCare

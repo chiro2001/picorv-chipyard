@@ -15,6 +15,27 @@ import chisel3._
 import chisel3.experimental.IntParam
 import chisel3.util._
 
+import java.io.{File, PrintWriter}
+import scala.io.Source
+
+object MyUtils {
+  def addBlackBoxDefines(src: String, dest: String, defines: Map[String, Any]) = {
+    val writer = new PrintWriter(new File(dest))
+    val source = Source.fromFile(src)
+    for ((key, value) <- defines) {
+      writer.println(s"`define $key $value")
+    }
+    source.getLines().foreach(line => writer.println(line))
+    source.close()
+    for ((key, _) <- defines) {
+      writer.println(s"`undef $key")
+    }
+    writer.close()
+    require(new File(dest).exists(), s"Cannot create file $dest!")
+  }
+}
+
+
 trait PicoRVCoreIOMem extends Bundle {
   val mem_valid = Output(Bool())
   val mem_instr = Output(Bool())
@@ -49,18 +70,53 @@ trait PicoRVCoreIOIRQ extends Bundle {
 
 trait PicoRVCoreIOTrace extends Bundle {
   val trace_valid = Output(Bool())
-  val trace_data = Output(UInt(32.W))
+  val trace_data = Output(UInt(36.W))
 }
 
+/**
+ * for (genvar i = 0; i < ariane_pkg::NR_COMMIT_PORTS; ++i) begin : gen_tp_roll
+      assign trace_o[(TRACEPORT_SZ*(i+1)/ariane_pkg::NR_COMMIT_PORTS)-1:(TRACEPORT_SZ*i/ariane_pkg::NR_COMMIT_PORTS)] = {
+          tp_if[i].tval[39:0],
+          tp_if[i].cause[7:0],
+          tp_if[i].interrupt,
+          tp_if[i].exception,
+          { 1'b0, tp_if[i].priv[1:0] },
+          tp_if[i].insn[31:0],
+          tp_if[i].iaddr[39:0],
+          tp_if[i].valid,
+          ~tp_if[i].reset,
+          tp_if[i].clock
+      };
+  end
+ */
 trait PicoRVCoreIOFormal extends Bundle {
+  //  output        rvfi_valid,
+  // 	output [63:0] rvfi_order,
+  // 	output [31:0] rvfi_insn,
+  // 	output        rvfi_trap,
+  // 	output        rvfi_halt,
+  // 	output        rvfi_intr,
+  // 	output [ 4:0] rvfi_rs1_addr,
+  // 	output [ 4:0] rvfi_rs2_addr,
+  // 	output [31:0] rvfi_rs1_rdata,
+  // 	output [31:0] rvfi_rs2_rdata,
+  // 	output [ 4:0] rvfi_rd_addr,
+  // 	output [31:0] rvfi_rd_wdata,
+  // 	output [31:0] rvfi_pc_rdata,
+  // 	output [31:0] rvfi_pc_wdata,
+  // 	output [31:0] rvfi_mem_addr,
+  // 	output [ 3:0] rvfi_mem_rmask,
+  // 	output [ 3:0] rvfi_mem_wmask,
+  // 	output [31:0] rvfi_mem_rdata,
+  // 	output [31:0] rvfi_mem_wdata,
   val rvfi_valid = Output(Bool())
   val rvfi_order = Output(UInt(64.W))
   val rvfi_insn = Output(UInt(32.W))
   val rvfi_trap = Output(Bool())
   val rvfi_halt = Output(Bool())
   val rvfi_intr = Output(Bool())
-  val rvfi_mode = Output(UInt(2.W))
-  val rvfi_ixl = Output(UInt(2.W))
+  // val rvfi_mode = Output(UInt(2.W))
+  // val rvfi_ixl = Output(UInt(2.W))
   val rvfi_rs1_addr = Output(UInt(5.W))
   val rvfi_rs2_addr = Output(UInt(5.W))
   val rvfi_rs1_rdata = Output(UInt(32.W))
@@ -75,15 +131,17 @@ trait PicoRVCoreIOFormal extends Bundle {
   val rvfi_mem_rdata = Output(UInt(32.W))
   val rvfi_mem_wdata = Output(UInt(32.W))
 
-  val rvfi_csr_mcycle_rmask = Output(UInt(64.W))
-  val rvfi_csr_mcycle_wmask = Output(UInt(64.W))
-  val rvfi_csr_mcycle_rdata = Output(UInt(64.W))
-  val rvfi_csr_mcycle_wdata = Output(UInt(64.W))
+  // val rvfi_csr_mcycle_rmask = Output(UInt(64.W))
+  // val rvfi_csr_mcycle_wmask = Output(UInt(64.W))
+  // val rvfi_csr_mcycle_rdata = Output(UInt(64.W))
+  // val rvfi_csr_mcycle_wdata = Output(UInt(64.W))
+  //
+  // val rvfi_csr_minstret_rmask = Output(UInt(64.W))
+  // val rvfi_csr_minstret_wmask = Output(UInt(64.W))
+  // val rvfi_csr_minstret_rdata = Output(UInt(64.W))
+  // val rvfi_csr_minstret_wdata = Output(UInt(64.W))
 
-  val rvfi_csr_minstret_rmask = Output(UInt(64.W))
-  val rvfi_csr_minstret_wmask = Output(UInt(64.W))
-  val rvfi_csr_minstret_rdata = Output(UInt(64.W))
-  val rvfi_csr_minstret_wdata = Output(UInt(64.W))
+  val trap = Output(Bool())
 }
 
 trait PicoRVCoreIOBase extends Bundle {
@@ -116,13 +174,15 @@ class PicoRVCoreIO extends Bundle
   with PicoRVCoreIOMem
   with PicoRVCoreIOPCPI
   with PicoRVCoreIOIRQ
-// with PicoRVCoreIOFormal
+  with PicoRVCoreIOFormal
 
 class PicoRVCoreAXIIO extends Bundle
   with PicoRVCoreIOBase
   with PicoRVCoreIOAXIPorts
   with PicoRVCoreIOPCPI
   with PicoRVCoreIOIRQ
+  with PicoRVCoreIOTrace
+  with PicoRVCoreIOFormal
 
 class picorv32_axi
 (ENABLE_COUNTERS: Boolean = true,
@@ -186,5 +246,10 @@ class picorv32_axi
   val io = IO(new PicoRVCoreAXIIO)
   val chipyardDir = System.getProperty("user.dir")
   val picorvVsrcDir = s"$chipyardDir/generators/picorv/src/main/resources/vsrc"
-  addPath(s"$picorvVsrcDir/picorv32/picorv32.v")
+  val src = s"$picorvVsrcDir/picorv32/picorv32.v"
+  val dest = src + ".preprocessed.v"
+  MyUtils.addBlackBoxDefines(src, dest, Seq(
+    "RISCV_FORMAL" -> ""
+  ).toMap)
+  addPath(dest)
 }
